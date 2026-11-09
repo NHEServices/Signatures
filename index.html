@@ -114,10 +114,11 @@ async function setSession(session){
     $('loginMessage').textContent='Your account does not have an authorized NHE employee profile.';
     $('login').classList.remove('hidden');$('appShell').classList.add('hidden');$('sessionBar').classList.add('hidden');return;
   }
+  const wasAlreadySignedIn = !$('appShell').classList.contains('hidden');
   employeeRole=profile.role;
   $('signedInAs').textContent=(profile.full_name||session.user.email)+' · '+profile.role;
   $('login').classList.add('hidden');$('appShell').classList.remove('hidden');$('sessionBar').classList.remove('hidden');
-  show('home');
+  if (!wasAlreadySignedIn) show('home');
 }
 async function signIn(){
   if(!sb){$('loginMessage').textContent='Connection is not ready. Check the setup message.';return;}
