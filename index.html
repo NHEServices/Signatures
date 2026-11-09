@@ -163,8 +163,8 @@ async function createCompletionPdf(){
   };
   // Position the BOTTOM of each signature above its printed line.
   // Previously inkBottom was treated as the top, causing signatures to cross the lines.
-  await stamp('owner1',153,627,300,19);
-  await stamp('rep',113,679,328,19);
+  await stamp('owner1',153,646,300,19);
+  await stamp('rep',113,695,328,19);
   return new Blob([await pdf.save()],{type:'application/pdf'});
 }
 async function downloadSignedPdf(){
