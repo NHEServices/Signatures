@@ -4,41 +4,112 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>NHE Services | Electronic Signature</title>
+  <title>NHE Services | Review Document</title>
   <style>
+    * { box-sizing: border-box; }
     body {
-      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 20px;
       background: #f3f6fa;
       color: #193047;
-      margin: 0;
-      padding: 24px;
+      font-family: Arial, sans-serif;
     }
     .card {
+      max-width: 850px;
+      margin: 30px auto;
+      padding: 24px;
       background: white;
-      max-width: 650px;
-      margin: 50px auto;
-      padding: 30px;
       border-radius: 12px;
       box-shadow: 0 3px 12px #00000012;
     }
     h1 { color: #142d43; }
+    .muted { color: #647588; }
     .notice {
+      padding: 14px;
       background: #fff4dd;
-      padding: 15px;
       border-radius: 8px;
+      margin-top: 16px;
+    }
+    iframe {
+      width: 100%;
+      height: 650px;
+      border: 1px solid #d8e0e7;
+      border-radius: 8px;
+    }
+    @media(max-width: 600px) {
+      .card { padding: 14px; }
+      iframe { height: 500px; }
     }
   </style>
 </head>
 <body>
   <main class="card">
     <h1>NHE Services</h1>
-    <h2>Electronic Document Signing</h2>
-    <p>Thank you for working with NHE Services.</p>
-    <div class="notice">
-      Online document signing is being configured.
-      No document is available for signature yet.
+    <h2>Review Your Document</h2>
+    <p id="status" class="muted">Checking your secure signing link...</p>
+
+    <div id="documentArea" hidden>
+      <p><strong>Customer:</strong> <span id="customerName"></span></p>
+      <p><strong>Document:</strong> <span id="formName"></span></p>
+      <iframe id="pdfViewer" title="NHE document for review"></iframe>
+      <div class="notice">
+        Electronic signing is being configured.
+        You can review the document, but signing is not available yet.
+      </div>
     </div>
-    <p>Please contact NHE Services if you need assistance.</p>
   </main>
+
+  <script>
+    async function loadDocument() {
+      const status = document.getElementById('status');
+      const token = new URLSearchParams(window.location.search).get('token');
+
+      if (!token || !/^[0-9a-f]{64}$/i.test(token)) {
+        status.textContent = 'This signing link is invalid or missing.';
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/get-signature-request', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token })
+        });
+
+        const result = await response.json();
+
+        if (!response.ok) {
+          status.textContent = result.error || 'Unable to load document.';
+          return;
+        }
+
+        if (!['auth', 'completion'].includes(result.formType)) {
+          status.textContent = 'Unknown document type.';
+          return;
+        }
+
+        document.getElementById('customerName').textContent =
+          result.customerName || 'Customer';
+
+        document.getElementById('formName').textContent =
+          result.formType === 'auth'
+            ? 'Work Authorization and Assignment of Claim'
+            : 'Job Completion Form';
+
+        document.getElementById('pdfViewer').src =
+          result.formType === 'auth'
+            ? '/nhe-work-authorization.pdf'
+            : '/nhe-job-completion.pdf';
+
+        document.getElementById('documentArea').hidden = false;
+        status.textContent = 'Your document is ready for review.';
+
+      } catch (error) {
+        status.textContent = 'Unable to connect. Please try again later.';
+      }
+    }
+
+    loadDocument();
+  </script>
 </body>
 </html>
