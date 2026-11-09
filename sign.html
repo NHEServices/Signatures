@@ -59,55 +59,108 @@
     </div>
   </main>
 
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script>
+    let previewUrl = null;
+
+    async function buildFilledPdf(formType, details) {
+      if (!window.PDFLib) throw new Error('PDF viewer library did not load. Please refresh.');
+      const templatePath = formType === 'auth'
+        ? '/nhe-work-authorization.pdf' : '/nhe-job-completion.pdf';
+      const templateResponse = await fetch(templatePath, { cache: 'no-store' });
+      if (!templateResponse.ok) throw new Error('Unable to load the original NHE form.');
+
+      const pdf = await PDFLib.PDFDocument.load(await templateResponse.arrayBuffer());
+      if (pdf.getPageCount() !== 1) throw new Error('Unexpected NHE form layout.');
+      const page = pdf.getPage(0);
+      const font = await pdf.embedFont(PDFLib.StandardFonts.Helvetica);
+      const color = PDFLib.rgb(0.04, 0.08, 0.12);
+      const height = page.getHeight();
+      const data = details || {};
+      const write = (value, x, top, maxWidth, fontSize = 10) => {
+        const text = String(value ?? '').trim().replace(/[\r\n\t]+/g, ' ');
+        if (!text) return;
+        // Helvetica cannot represent every Unicode character; replace unsupported
+        // characters without allowing the entire preview to fail.
+        const safe = [...text].map(ch => {
+          try { font.encodeText(ch); return ch; } catch { return '?'; }
+        }).join('');
+        let size = fontSize;
+        while (size > 6 && font.widthOfTextAtSize(safe, size) > maxWidth) size -= 0.25;
+        // Do not let long input spill over into neighboring printed fields.
+        let fitted = safe;
+        while (fitted && font.widthOfTextAtSize(fitted, size) > maxWidth) fitted = fitted.slice(0, -1);
+        if (fitted) page.drawText(fitted, { x, y: height - top, size, font, color });
+      };
+
+      if (formType === 'auth') {
+        const lossDate = String(data.loss || '');
+        const dateParts = lossDate.split('-');
+        const formattedLoss = dateParts.length === 3
+          ? dateParts[1] + '/' + dateParts[2] + '/' + dateParts[0] : lossDate;
+        // Same positions used by the existing employee-side PDF generator.
+        write(data.claim, 83, 247, 162);
+        write(formattedLoss, 347, 247, 155);
+        write([data.address, data.city].filter(Boolean).join(', '), 121, 355, 390);
+        write(data.insurer, 39, 439, 410);
+      } else {
+        write(data.customer, 123, 249, 392);
+        write(data.address, 137, 265, 375);
+        const location = String(data.city || '').trim();
+        const parts = location.split(',').map(x => x.trim());
+        const city = parts.length > 1 ? parts[0] : location;
+        const region = parts.length > 1 ? parts.slice(1).join(',').trim() : '';
+        const regionMatch = region.match(/^([A-Za-z]{2}|[A-Za-z ]+?)\s+(\d{5}(?:-\d{4})?)$/);
+        write(city, 112, 279, 125, 9);
+        if (regionMatch) {
+          write(regionMatch[1], 310, 279, 42, 9);
+          write(regionMatch[2], 409, 279, 95, 9);
+        } else if (region) {
+          write(region, 310, 279, 194, 9);
+        }
+        write(data.insurer, 200, 298, 305);
+        write(data.claim, 135, 314, 370);
+      }
+      return new Blob([await pdf.save()], { type: 'application/pdf' });
+    }
+
     async function loadDocument() {
       const status = document.getElementById('status');
       const token = new URLSearchParams(window.location.search).get('token');
-
       if (!token || !/^[0-9a-f]{64}$/i.test(token)) {
         status.textContent = 'This signing link is invalid or missing.';
         return;
       }
-
       try {
         const response = await fetch('/api/get-signature-request', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
           body: JSON.stringify({ token })
         });
-
         const result = await response.json();
-
-        if (!response.ok) {
-          status.textContent = result.error || 'Unable to load document.';
-          return;
-        }
-
+        if (!response.ok) throw new Error(result.error || 'Unable to load document.');
         if (!['auth', 'completion'].includes(result.formType)) {
-          status.textContent = 'Unknown document type.';
-          return;
+          throw new Error('Unknown document type.');
         }
-
-        document.getElementById('customerName').textContent =
-          result.customerName || 'Customer';
-
-        document.getElementById('formName').textContent =
-          result.formType === 'auth'
-            ? 'Work Authorization and Assignment of Claim'
-            : 'Job Completion Form';
-
-        document.getElementById('pdfViewer').src =
-          result.formType === 'auth'
-            ? '/nhe-work-authorization.pdf'
-            : '/nhe-job-completion.pdf';
-
+        const data = result.documentData || {};
+        document.getElementById('customerName').textContent = result.customerName || 'Customer';
+        document.getElementById('formName').textContent = result.formType === 'auth'
+          ? 'Work Authorization and Assignment of Claim' : 'Job Completion Form';
+        status.textContent = 'Preparing your document with the job information…';
+        const blob = await buildFilledPdf(result.formType, data);
+        previewUrl = URL.createObjectURL(blob);
+        document.getElementById('pdfViewer').src = previewUrl;
         document.getElementById('documentArea').hidden = false;
         status.textContent = 'Your document is ready for review.';
-
       } catch (error) {
-        status.textContent = 'Unable to connect. Please try again later.';
+        status.textContent = error.message || 'Unable to connect. Please try again later.';
       }
     }
+
+    window.addEventListener('pagehide', () => {
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    });
 
     loadDocument();
   </script>
