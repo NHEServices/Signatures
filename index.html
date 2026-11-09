@@ -13,10 +13,9 @@ const roles=()=>current.formType==='auth'?[['owner1','Property Owner / Authorize
 // Render the COMPLETE document into one canvas and fit it within a single PDF page.
 async function createOnePagePdf(){
   if(!completed)throw new Error('Open a signed test document first.');
-  // Work Authorization uses the original company PDF, not a screenshot of HTML.
-  if(completed.type !== 'auth'){
-    throw new Error('The original PDF template is currently configured for Work Authorization only. Job Completion needs its own template.');
-  }
+  // Both documents use their original company PDF as the background.
+  if(completed.type === 'completion')return createCompletionPdf();
+  if(completed.type !== 'auth')throw new Error('Unknown form type.');
   if(!window.PDFLib)throw new Error('PDF library did not load. Refresh and try again.');
   const response=await fetch('/nhe-work-authorization.pdf',{cache:'no-store'});
   if(!response.ok)throw new Error('Original NHE PDF template not found (HTTP '+response.status+'). Upload nhe-work-authorization.pdf to the GitHub main branch.');
@@ -93,11 +92,85 @@ async function createOnePagePdf(){
   await stamp('rep',706,d.tech);
   return new Blob([await pdf.save()],{type:'application/pdf'});
 }
+// Original one-page NHE Job Completion Form. Separate coordinates preserve the
+// already-approved Work Authorization layout above.
+async function createCompletionPdf(){
+  if(!window.PDFLib)throw new Error('PDF library did not load. Refresh and try again.');
+  const response=await fetch('/nhe-job-completion.pdf',{cache:'no-store'});
+  if(!response.ok)throw new Error('Job Completion template not found (HTTP '+response.status+'). Upload nhe-job-completion.pdf to the GitHub main branch.');
+  const pdf=await PDFLib.PDFDocument.load(await response.arrayBuffer());
+  if(pdf.getPageCount()!==1)throw new Error('Job Completion template must have exactly one page.');
+  const page=pdf.getPage(0),{rgb}=PDFLib;
+  const font=await pdf.embedFont(PDFLib.StandardFonts.Helvetica);
+  const d=completed.data||{},sigs=completed.signatures||{};
+  const height=page.getHeight(),black=rgb(.04,.08,.12);
+  const write=(value,x,baselineTop,maxWidth,size=10)=>{
+    const str=String(value??'').trim();if(!str)return;
+    let fs=size;
+    while(fs>6 && font.widthOfTextAtSize(str,fs)>maxWidth)fs-=.25;
+    page.drawText(str,{x,y:height-baselineTop,size:fs,font,color:black,maxWidth});
+  };
+  const dateOf=when=>{
+    if(!when)return '';
+    const dt=new Date(when);
+    return isNaN(dt.getTime())?String(when).split(',')[0]:dt.toLocaleDateString('en-US');
+  };
+  // The source form's blanks are at the top of the letter-size page.
+  write(d.customer,123,249,392,10);
+  write(d.address,137,265,375,10);
+  // City, state and ZIP share one preprinted row.
+  const location=String(d.city||'').trim();
+  const parts=location.split(',').map(x=>x.trim());
+  const city=parts.length>1?parts[0]:location;
+  const region=parts.length>1?parts.slice(1).join(',').trim():'';
+  const regionMatch=region.match(/^([A-Za-z]{2}|[A-Za-z ]+?)\s+(\d{5}(?:-\d{4})?)$/);
+  write(city,112,281,130,9);
+  if(regionMatch){write(regionMatch[1],284,281,68,9);write(regionMatch[2],383,281,122,9);}
+  else if(region){write(region,284,281,224,9);}
+  write(d.insurer,200,298,305,10);
+  write(d.claim,135,314,370,10);
+  // Customer printed name and date sit just above their respective blanks.
+  write(sigs.owner1?.name||d.customer,218,610,224,9);
+  write(dateOf(sigs.owner1?.when),492,610,46,8);
+  write(dateOf(sigs.rep?.when),493,685,45,8);
+  const stamp=async(id,x,inkBottom,maxW,maxH)=>{
+    const sig=sigs[id];if(!sig?.image)return;
+    const source=new Image();source.src=sig.image;
+    await new Promise((resolve,reject)=>{
+      if(source.complete&&source.naturalWidth)return resolve();
+      source.onload=resolve;source.onerror=()=>reject(new Error('Signature image could not be loaded'));
+    });
+    const canvas=document.createElement('canvas');canvas.width=source.naturalWidth;canvas.height=source.naturalHeight;
+    const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(source,0,0);
+    const pixels=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+    let minX=canvas.width,minY=canvas.height,maxX=-1,maxY=-1;
+    for(let y=0;y<canvas.height;y++)for(let x=0;x<canvas.width;x++){
+      const n=(y*canvas.width+x)*4;
+      if(pixels[n+3]>35&&(pixels[n]<235||pixels[n+1]<235||pixels[n+2]<235)){
+        minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);
+      }
+    }
+    if(maxX<minX)throw new Error('Signature contains no visible ink');
+    const pad=3,left=Math.max(0,minX-pad),top=Math.max(0,minY-pad);
+    const crop=document.createElement('canvas');
+    crop.width=Math.min(canvas.width-left,maxX-minX+1+2*pad);
+    crop.height=Math.min(canvas.height-top,maxY-minY+1+2*pad);
+    crop.getContext('2d').drawImage(canvas,left,top,crop.width,crop.height,0,0,crop.width,crop.height);
+    const bytes=Uint8Array.from(atob(crop.toDataURL('image/png').split(',')[1]),c=>c.charCodeAt(0));
+    const img=await pdf.embedPng(bytes),scale=Math.min(maxW/img.width,maxH/img.height);
+    const w=img.width*scale,h=img.height*scale;
+    page.drawImage(img,{x,y:height-inkBottom-h,width:w,height:h});
+  };
+  // Ink stays above the printed signature lines (approximately y=634 and 685).
+  await stamp('owner1',153,627,300,19);
+  await stamp('rep',113,679,328,19);
+  return new Blob([await pdf.save()],{type:'application/pdf'});
+}
 async function downloadSignedPdf(){
   try{
     const blob=await createOnePagePdf();
     const url=URL.createObjectURL(blob),a=document.createElement('a');
-    a.href=url;a.download='NHE-Original-Form-Signed-Test.pdf';document.body.appendChild(a);a.click();a.remove();
+    a.href=url;a.download=completed?.type==='completion'?'NHE-Job-Completion-Signed-Test.pdf':'NHE-Work-Authorization-Signed-Test.pdf';document.body.appendChild(a);a.click();a.remove();
     setTimeout(()=>URL.revokeObjectURL(url),30000);
   }catch(e){alert('PDF download failed: '+(e?.message||String(e)));}
 }
