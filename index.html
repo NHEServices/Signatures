@@ -47,25 +47,50 @@ async function createOnePagePdf(){
     const dt=new Date(when);
     return isNaN(dt.getTime())?String(when).split(',')[0]:dt.toLocaleDateString('en-US');
   };
-  const stamp=async(id,top,defaultName)=>{
+  // Cover the template's printed "x" markers, leaving the signature areas clean.
+  page.drawRectangle({x:224,y:792-638,width:12,height:16,color:rgb(1,1,1)});
+  page.drawRectangle({x:224,y:792-679,width:12,height:16,color:rgb(1,1,1)});
+  const stamp=async(id,baselineTop,defaultName)=>{
     const s=sigs[id];if(!s?.image)return;
-    write(s.name||defaultName||'',39,top+4,136,9);
-    write(signerDate(s.when),435,top+4,105,9);
+    // Names and dates sit above the printed labels, not on top of them.
+    write(s.name||defaultName||'',39,baselineTop,136,9);
+    write(signerDate(s.when),435,baselineTop,105,9);
     try{
-      const data=String(s.image).split(',')[1];
-      if(!data)throw new Error('Missing signature image data');
+      // Trim the unused transparent margins from the signature canvas.
+      // Otherwise pdf-lib scales the entire 760x180 canvas and the ink
+      // ends up tiny or in the wrong part of the form.
+      const source=new Image();
+      source.src=s.image;
+      await new Promise((resolve,reject)=>{if(source.complete&&source.naturalWidth)return resolve();source.onload=resolve;source.onerror=()=>reject(new Error('Signature image could not be loaded'));});
+      const canvas=document.createElement('canvas');canvas.width=source.naturalWidth;canvas.height=source.naturalHeight;
+      const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(source,0,0);
+      const pixels=ctx.getImageData(0,0,canvas.width,canvas.height).data;
+      let minX=canvas.width,minY=canvas.height,maxX=-1,maxY=-1;
+      for(let y=0;y<canvas.height;y++)for(let x=0;x<canvas.width;x++){
+        const n=(y*canvas.width+x)*4;
+        if(pixels[n+3]>35 && (pixels[n]<235||pixels[n+1]<235||pixels[n+2]<235)){
+          minX=Math.min(minX,x);maxX=Math.max(maxX,x);minY=Math.min(minY,y);maxY=Math.max(maxY,y);
+        }
+      }
+      if(maxX<minX)throw new Error('Signature contains no visible ink');
+      const pad=3;
+      const left=Math.max(0,minX-pad),top=Math.max(0,minY-pad);
+      const cropped=document.createElement('canvas');cropped.width=Math.min(canvas.width-left,maxX-minX+1+2*pad);cropped.height=Math.min(canvas.height-top,maxY-minY+1+2*pad);
+      cropped.getContext('2d').drawImage(canvas,left,top,cropped.width,cropped.height,0,0,cropped.width,cropped.height);
+      const data=cropped.toDataURL('image/png').split(',')[1];
       const bytes=Uint8Array.from(atob(data),c=>c.charCodeAt(0));
       const img=await pdf.embedPng(bytes);
-      // Keep the entire drawn signature inside its original signature line.
-      const maxW=132,maxH=27;
+      const maxW=160,maxH=19;
       const ratio=Math.min(maxW/img.width,maxH/img.height);
       const w=img.width*ratio,h=img.height*ratio;
-      page.drawImage(img,{x:230,y:792-(top-2)-h,width:w,height:h});
+      // Position above the preprinted labels, not through them.
+      const inkBottom=baselineTop-7;
+      page.drawImage(img,{x:245,y:792-inkBottom-h,width:w,height:h});
     }catch(e){throw new Error('Unable to place '+id+' signature: '+e.message);}
   };
-  await stamp('owner1',636,d.customer);
-  await stamp('owner2',678,d.customer);
-  await stamp('rep',718,d.tech);
+  await stamp('owner1',625,d.customer);
+  await stamp('owner2',666,d.customer);
+  await stamp('rep',706,d.tech);
   return new Blob([await pdf.save()],{type:'application/pdf'});
 }
 async function downloadSignedPdf(){
