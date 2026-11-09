@@ -159,9 +159,10 @@ async function createCompletionPdf(){
     const bytes=Uint8Array.from(atob(crop.toDataURL('image/png').split(',')[1]),c=>c.charCodeAt(0));
     const img=await pdf.embedPng(bytes),scale=Math.min(maxW/img.width,maxH/img.height);
     const w=img.width*scale,h=img.height*scale;
-    page.drawImage(img,{x,y:height-inkBottom-h,width:w,height:h});
+    page.drawImage(img,{x,y:height-inkBottom,width:w,height:h});
   };
-  // Ink stays above the printed signature lines (approximately y=634 and 685).
+  // Position the BOTTOM of each signature above its printed line.
+  // Previously inkBottom was treated as the top, causing signatures to cross the lines.
   await stamp('owner1',153,627,300,19);
   await stamp('rep',113,679,328,19);
   return new Blob([await pdf.save()],{type:'application/pdf'});
