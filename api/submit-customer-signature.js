@@ -284,15 +284,16 @@ async function buildPdf(
       135, 314, 370
     );
 
-    // Customer's printed name and signing date
+    // CORRECTED: Customer's printed name
     drawText(
       page, font, signerName,
-      165, 617, 280, 10
+      165, 605, 280, 10
     );
 
+    // CORRECTED: Customer's signing date
     drawText(
       page, font, date,
-      465, 617, 100, 10
+      465, 605, 100, 10
     );
 
     // Customer's handwritten signature
@@ -307,10 +308,10 @@ async function buildPdf(
       113, 695, 328, 19
     );
 
-    // NHE representative signing date
+    // CORRECTED: NHE representative signing date
     drawText(
       page, font, date,
-      465, 695, 100, 10
+      465, 682, 100, 10
     );
   }
 
