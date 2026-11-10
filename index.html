@@ -256,15 +256,32 @@ async function sendOfficeEmail(documentId){
 }
 function retryOfficeEmail(){return sendOfficeEmail(latestUploadedDocumentId);}
 
-// Unified customer-job view. Read-only: does not alter existing requests, PDFs or drafts.
+// Unified customer-job view. Read-only grouping; existing records are not changed.
 let groupedCustomerJobs=[];
 const normalized=v=>String(v||'').trim().toLowerCase().replace(/\s+/g,' ');
+const normalizedAddress=v=>normalized(v).replace(/[,\s]+(?:unknown|undefined|n\/a)\s*$/i,'').replace(/[^a-z0-9]/g,'');
 function customerGroupKey(d){
-  const name=normalized(d.customer),address=normalized(d.address),job=normalized(d.jobNo),claim=normalized(d.claim);
-  // Prefer a job number, then a claim number. Include the address to prevent unrelated jobs merging.
-  if(job)return 'job:'+job+'|'+address;
-  if(claim)return 'claim:'+claim+'|'+address;
+  const name=normalized(d.customer).replace(/[^a-z0-9]/g,'');
+  const address=normalizedAddress(d.address);
+  const claim=normalized(d.claim).replace(/[^a-z0-9]/g,'');
+  const job=normalized(d.jobNo).replace(/[^a-z0-9]/g,'');
+  // Claim and property identify the same job even when a PDF lacks a job number.
+  // Include the customer to avoid joining unrelated customers with coincident numbers.
+  if(claim)return 'claim:'+name+'|'+claim+'|'+address;
+  if(job)return 'job:'+name+'|'+job+'|'+address;
   return 'person:'+name+'|'+address;
+}
+function openGroupedJob(index){
+  const g=groupedCustomerJobs[index];if(!g)return;
+  const draft=g.drafts[0];
+  if(draft){openCloudJob(draft.id,g.drafts);return;}
+  // A request or PDF can be used to prepare a new document without changing the old one.
+  const r=g.requests[0],rd=r?.document_data||{};
+  cloudJobId=null;currentId=null;completed=null;signatures={};
+  const values={customer:g.data.customer||'',jobNo:g.data.jobNo||rd.jobNo||'',address:g.data.address||rd.address||'',city:rd.city||'',insurer:rd.insurer||'',claim:g.data.claim||rd.claim||'',loss:rd.loss||'',tech:rd.tech||'',formType:rd.formType||r?.form_type||'auth'};
+  fields.forEach(k=>$(k).value=values[k]|| (k==='formType'?'auth':''));
+  $('editorTitle').textContent='Prepare Document for '+(values.customer||'Customer');
+  show('editor');
 }
 async function renderCustomerJobs(){
   const el=$('customerJobList');if(!el)return;
@@ -278,28 +295,37 @@ async function renderCustomerJobs(){
     const draftFetch=employeeRole==='admin'?sb.from('jobs').select('id,customer_id,job_number,insurance_company,claim_number,date_of_loss,status,customers(id,full_name,address_line1,city)').order('created_at',{ascending:false}).limit(200).then(({data,error})=>{if(error)throw error;return data||[];}):Promise.resolve([]);
     const [requests,pdfs,drafts]=await Promise.all([requestFetch,pdfFetch,draftFetch]);
     const groups=new Map();
-    const add=(d,type,item)=>{const key=customerGroupKey(d);if(!groups.has(key))groups.set(key,{key,data:d,requests:[],pdfs:[],drafts:[]});const g=groups.get(key);g[type].push(item);if(!g.data.customer&&d.customer)g.data.customer=d.customer;};
+    const add=(d,type,item)=>{const key=customerGroupKey(d);if(!groups.has(key))groups.set(key,{key,data:{...d},requests:[],pdfs:[],drafts:[]});const g=groups.get(key);g[type].push(item);for(const k of ['customer','address','jobNo','claim'])if(!g.data[k]&&d[k])g.data[k]=d[k];};
     requests.forEach(r=>{const d=r.document_data||{};add({customer:r.customer_name||d.customer,address:d.address,jobNo:d.jobNo,claim:d.claim},'requests',r);});
     pdfs.forEach(d=>add({customer:d.customer_name,address:d.property_address,jobNo:d.job_number,claim:d.claim_number},'pdfs',d));
     drafts.forEach(j=>add({customer:j.customers?.full_name,address:j.customers?.address_line1,jobNo:j.job_number,claim:j.claim_number},'drafts',j));
-    groupedCustomerJobs=[...groups.values()].sort((a,b)=>a.data.customer.localeCompare(b.data.customer));
+    groupedCustomerJobs=[...groups.values()].sort((a,b)=>String(a.data.customer||'').localeCompare(String(b.data.customer||'')));
     filterCustomerJobs();
   }catch(e){el.textContent='Unable to load customer jobs: '+(e?.message||String(e));}
 }
 function filterCustomerJobs(){
   const el=$('customerJobList');if(!el)return;
   const q=normalized($('customerJobSearch')?.value);
-  const groups=groupedCustomerJobs.filter(g=>[g.data.customer,g.data.address,g.data.jobNo,g.data.claim].some(v=>normalized(v).includes(q)));
   const fmt=v=>{const d=new Date(v);return isNaN(d.getTime())?'Unknown':d.toLocaleDateString();};
-  el.innerHTML=groups.length?groups.map((g,i)=>{
+  const matches=groupedCustomerJobs.map((g,i)=>({g,i})).filter(({g})=>[g.data.customer,g.data.address,g.data.jobNo,g.data.claim].some(v=>normalized(v).includes(q)));
+  el.innerHTML=matches.length?matches.map(({g,i})=>{
     const pending=g.requests.filter(r=>r.status==='pending'&&new Date(r.expires_at).getTime()>Date.now()).length;
     const header=`<b>${esc(g.data.customer||'Customer')}</b> <span class="request-status ${pending?'request-pending':g.requests.some(r=>r.status==='signed')?'request-signed':'request-other'}">${pending?pending+' Awaiting Signature':g.pdfs.length?'Signed documents available':'View documents'}</span>`;
     const reqHtml=g.requests.map(r=>{const status=String(r.status||'pending').toLowerCase();const expired=status==='pending'&&new Date(r.expires_at).getTime()<Date.now();const label=['signed','completed','complete'].includes(status)?'Signed':status==='email_failed'?'Email Failed':expired?'Link Expired':status==='pending'?'Awaiting Signature':status;return `<div class="listrow"><div><b>${esc(r.form_type==='completion'?'Job Completion Form':'Work Authorization')}</b> <span class="request-status ${label==='Signed'?'request-signed':label==='Awaiting Signature'?'request-pending':'request-other'}">${esc(label)}</span><div class="pill">${esc(r.customer_email||'')} · Sent ${esc(fmt(r.created_at))}</div></div></div>`;}).join('');
-    const pdfHtml=g.pdfs.map(d=>`<div class="listrow"><div><b>${esc(d.form_name||'Signed document')}</b> <span class="request-status request-signed">PDF saved</span><div class="pill">${esc(fmt(d.signed_at))}</div></div><button class="btn alt" data-unified-pdf="${esc(d.id)}">Open PDF</button></div>`).join('');
-    const draftHtml=g.drafts.map(d=>`<div class="listrow"><div><b>Job draft</b> <span class="pill">${esc(d.status||'Draft')}</span></div><button class="btn alt" data-unified-draft="${esc(d.id)}">Edit draft</button></div>`).join('');
-    return `<details class="card" style="margin:10px 0;padding:16px"><summary style="cursor:pointer;list-style-position:inside">${header}<div class="pill" style="margin:5px 0 0 18px">${esc(g.data.address||'Address not provided')} · Job ${esc(g.data.jobNo||'—')} · Claim ${esc(g.data.claim||'—')} · ${g.requests.length} request(s), ${g.pdfs.length} PDF(s)</div></summary><div style="margin-top:12px">${reqHtml}${pdfHtml}${draftHtml||''}${!g.requests.length&&!g.pdfs.length&&!g.drafts.length?'<p>No documents yet.</p>':''}</div></details>`;
+    const pdfHtml=g.pdfs.map(d=>`<div class="listrow"><div><b>${esc(d.form_name||'Signed document')}</b> <span class="request-status request-signed">PDF saved</span><div class="pill">${esc(fmt(d.signed_at))}</div></div><button type="button" class="btn alt" data-unified-pdf="${esc(d.id)}">Open PDF</button></div>`).join('');
+    const draftHtml=g.drafts.map(d=>`<div class="listrow"><div><b>Job draft</b> <span class="pill">${esc(d.status||'Draft')}</span></div><button type="button" class="btn alt" data-unified-draft="${esc(d.id)}">Edit draft</button></div>`).join('');
+    return `<details class="card" style="margin:10px 0;padding:16px"><summary style="cursor:pointer;list-style-position:inside">${header}<div class="pill" style="margin:5px 0 0 18px">${esc(g.data.address||'Address not provided')} · Job ${esc(g.data.jobNo||'—')} · Claim ${esc(g.data.claim||'—')} · ${g.requests.length} request(s), ${g.pdfs.length} PDF(s)</div></summary><div style="margin-top:12px"><div class="toolbar noprint"><button type="button" class="btn alt" data-open-group="${i}">${g.drafts.length?'Open Job Draft':'Prepare Another Document'}</button></div>${reqHtml}${pdfHtml}${draftHtml}${!g.pdfs.length&&g.requests.some(r=>['signed','complete','completed'].includes(String(r.status).toLowerCase()))?'<p class="notice">This request is marked signed, but no matching PDF was found in this job. Check the original signed-document list below.</p>':''}</div></details>`;
   }).join(''):'<p class="muted">No matching customer jobs found.</p>';
-  el.querySelectorAll('[data-unified-pdf]').forEach(b=>b.addEventListener('click',async()=>{const doc=groupedCustomerJobs.flatMap(g=>g.pdfs).find(d=>d.id===b.dataset.unifiedPdf);if(!doc)return;const {data,error}=await sb.storage.from('signed-documents').createSignedUrl(doc.storage_path,60);if(error||!data?.signedUrl){alert('Unable to open PDF: '+(error?.message||'Unknown error'));return;}window.open(data.signedUrl,'_blank','noopener,noreferrer');}));
+  el.querySelectorAll('[data-open-group]').forEach(b=>b.addEventListener('click',()=>openGroupedJob(Number(b.dataset.openGroup))));
+  el.querySelectorAll('[data-unified-pdf]').forEach(b=>b.addEventListener('click',async()=>{
+    // Open the tab immediately, before the asynchronous storage call, to avoid popup blockers.
+    const tab=window.open('about:blank','_blank');
+    const doc=groupedCustomerJobs.flatMap(g=>g.pdfs).find(d=>String(d.id)===b.dataset.unifiedPdf);
+    if(!doc){if(tab)tab.close();return;}
+    const {data,error}=await sb.storage.from('signed-documents').createSignedUrl(doc.storage_path,60);
+    if(error||!data?.signedUrl){if(tab)tab.close();alert('Unable to open PDF: '+(error?.message||'Unknown error'));return;}
+    if(tab)tab.location.href=data.signedUrl;else window.location.href=data.signedUrl;
+  }));
   el.querySelectorAll('[data-unified-draft]').forEach(b=>b.addEventListener('click',()=>{const drafts=groupedCustomerJobs.flatMap(g=>g.drafts);openCloudJob(b.dataset.unifiedDraft,drafts);}));
 }
 
