@@ -303,6 +303,30 @@ async function renderCustomerJobs(){
     filterCustomerJobs();
   }catch(e){el.textContent='Unable to load customer jobs: '+(e?.message||String(e));}
 }
+async function cancelSignatureRequest(requestId, button){
+  if(!sb||!employeeRole){alert('Please sign in as an NHE employee.');return;}
+  if(!confirm('Cancel this signature request? The customer will no longer be able to sign using the original link. This cannot be undone.'))return;
+  button.disabled=true;
+  const oldText=button.textContent;
+  button.textContent='Cancelling…';
+  try{
+    const {data:{session},error}=await sb.auth.getSession();
+    if(error||!session?.access_token)throw new Error('Your session expired. Sign in again.');
+    const response=await fetch('/api/cancel-signature-request',{
+      method:'POST',
+      headers:{'Content-Type':'application/json',Authorization:'Bearer '+session.access_token},
+      body:JSON.stringify({requestId})
+    });
+    const result=await response.json().catch(()=>({}));
+    if(!response.ok||!result.success)throw new Error(result.error||'Cancellation was not confirmed.');
+    alert('Signature request cancelled. The original signing link is no longer valid. You can prepare and send a corrected document.');
+    await Promise.all([renderCustomerJobs(),renderSignatureRequests()]);
+  }catch(e){alert('Request NOT cancelled: '+(e?.message||String(e)));button.disabled=false;button.textContent=oldText;}
+}
+function bindCancelButtons(root){
+  root.querySelectorAll('[data-cancel-request]').forEach(b=>b.addEventListener('click',()=>cancelSignatureRequest(b.dataset.cancelRequest,b)));
+}
+
 function filterCustomerJobs(){
   const el=$('customerJobList');if(!el)return;
   const q=normalized($('customerJobSearch')?.value);
@@ -311,11 +335,12 @@ function filterCustomerJobs(){
   el.innerHTML=matches.length?matches.map(({g,i})=>{
     const pending=g.requests.filter(r=>r.status==='pending'&&new Date(r.expires_at).getTime()>Date.now()).length;
     const header=`<b>${esc(g.data.customer||'Customer')}</b> <span class="request-status ${pending?'request-pending':g.requests.some(r=>r.status==='signed')?'request-signed':'request-other'}">${pending?pending+' Awaiting Signature':g.pdfs.length?'Signed documents available':'View documents'}</span>`;
-    const reqHtml=g.requests.map(r=>{const status=String(r.status||'pending').toLowerCase();const expired=status==='pending'&&new Date(r.expires_at).getTime()<Date.now();const label=['signed','completed','complete'].includes(status)?'Signed':status==='email_failed'?'Email Failed':expired?'Link Expired':status==='pending'?'Awaiting Signature':status;return `<div class="listrow"><div><b>${esc(r.form_type==='completion'?'Job Completion Form':'Work Authorization')}</b> <span class="request-status ${label==='Signed'?'request-signed':label==='Awaiting Signature'?'request-pending':'request-other'}">${esc(label)}</span><div class="pill">${esc(r.customer_email||'')} · Sent ${esc(fmt(r.created_at))}</div></div></div>`;}).join('');
+    const reqHtml=g.requests.map(r=>{const status=String(r.status||'pending').toLowerCase();const expired=status==='pending'&&new Date(r.expires_at).getTime()<Date.now();const label=['signed','completed','complete'].includes(status)?'Signed':status==='email_failed'?'Email Failed':expired?'Link Expired':status==='pending'?'Awaiting Signature':status;return `<div class="listrow"><div><b>${esc(r.form_type==='completion'?'Job Completion Form':'Work Authorization')}</b> <span class="request-status ${label==='Signed'?'request-signed':label==='Awaiting Signature'?'request-pending':'request-other'}">${esc(label)}</span><div class="pill">${esc(r.customer_email||'')} · Sent ${esc(fmt(r.created_at))}</div></div>${status==='pending'?`<button type="button" class="btn warn" data-cancel-request="${esc(r.id)}">Cancel Request</button>`:''}</div>`;}).join('');
     const pdfHtml=g.pdfs.map(d=>`<div class="listrow"><div><b>${esc(d.form_name||'Signed document')}</b> <span class="request-status request-signed">PDF saved</span><div class="pill">${esc(fmt(d.signed_at))}</div></div><button type="button" class="btn alt" data-unified-pdf="${esc(d.id)}">Open PDF</button></div>`).join('');
     const draftHtml=g.drafts.map(d=>`<div class="listrow"><div><b>Job draft</b> <span class="pill">${esc(d.status||'Draft')}</span></div><button type="button" class="btn alt" data-unified-draft="${esc(d.id)}">Edit draft</button></div>`).join('');
     return `<details class="card" style="margin:10px 0;padding:16px"><summary style="cursor:pointer;list-style-position:inside">${header}<div class="pill" style="margin:5px 0 0 18px">${esc(g.data.address||'Address not provided')} · Job ${esc(g.data.jobNo||'—')} · Claim ${esc(g.data.claim||'—')} · ${g.requests.length} request(s), ${g.pdfs.length} PDF(s)</div></summary><div style="margin-top:12px"><div class="toolbar noprint"><button type="button" class="btn alt" data-open-group="${i}">${g.drafts.length?'Open Job Draft':'Prepare Another Document'}</button></div>${reqHtml}${pdfHtml}${draftHtml}${!g.pdfs.length&&g.requests.some(r=>['signed','complete','completed'].includes(String(r.status).toLowerCase()))?'<p class="notice">This request is marked signed, but no matching PDF was found in this job. Check the original signed-document list below.</p>':''}</div></details>`;
   }).join(''):'<p class="muted">No matching customer jobs found.</p>';
+  bindCancelButtons(el);
   el.querySelectorAll('[data-open-group]').forEach(b=>b.addEventListener('click',()=>openGroupedJob(Number(b.dataset.openGroup))));
   el.querySelectorAll('[data-unified-pdf]').forEach(b=>b.addEventListener('click',async()=>{
     // Open the tab immediately, before the asynchronous storage call, to avoid popup blockers.
@@ -348,8 +373,9 @@ async function renderSignatureRequests(){
       const label=['signed','completed','complete'].includes(status)?'Signed':status==='email_failed'?'Email Failed':expired?'Link Expired':status==='pending'?'Awaiting Signature':status.replace(/_/g,' ');
       const badgeClass=label==='Signed'?'request-signed':label==='Awaiting Signature'?'request-pending':'request-other';
       const form=r.form_type==='completion'?'Job Completion Form':'Work Authorization and Assignment of Claim';
-      return `<div class="listrow"><div><b>${esc(r.customer_name||'Customer')}</b> <span class="request-status ${badgeClass}">${esc(label)}</span><div class="pill">${esc(form)} · Job ${esc(d.jobNo||'—')} · Claim ${esc(d.claim||'—')}</div><div class="pill">${esc(d.address||'')} · ${esc(r.customer_email||'')}</div><div class="pill">Sent: ${esc(formatDate(r.created_at))} · Link expires: ${esc(formatDate(r.expires_at))}</div></div></div>`;
+      return `<div class="listrow"><div><b>${esc(r.customer_name||'Customer')}</b> <span class="request-status ${badgeClass}">${esc(label)}</span><div class="pill">${esc(form)} · Job ${esc(d.jobNo||'—')} · Claim ${esc(d.claim||'—')}</div><div class="pill">${esc(d.address||'')} · ${esc(r.customer_email||'')}</div><div class="pill">Sent: ${esc(formatDate(r.created_at))} · Link expires: ${esc(formatDate(r.expires_at))}</div></div>${status==='pending'?`<button type="button" class="btn warn" data-cancel-request="${esc(r.id)}">Cancel Request</button>`:''}</div>`;
     }).join(''):'<p class="muted">No signature requests found.</p>';
+    bindCancelButtons(el);
   }catch(e){el.textContent='Unable to load signature requests: '+(e?.message||String(e));}
 }
 
