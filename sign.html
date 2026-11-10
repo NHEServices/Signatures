@@ -66,15 +66,15 @@
       <iframe id="pdfViewer" title="NHE document for review"></iframe>
       <section class="signing-panel" aria-labelledby="signingTitle">
         <h2 id="signingTitle">Customer signature</h2>
-        <p>Review the document above before signing. This is a test screen; submitting is not enabled yet.</p>
+        <p>Review the document above, then sign below to submit your completed form.</p>
         <label for="signerName">Your printed name</label>
         <input id="signerName" type="text" maxlength="150" autocomplete="name">
         <label for="customerSignatureCanvas">Draw your signature</label>
         <canvas id="customerSignatureCanvas" class="signature-pad" width="760" height="180" aria-label="Draw your signature"></canvas>
         <p><button id="clearSignatureButton" type="button">Clear signature</button></p>
         <label style="font-weight:normal"><input id="signingConsent" type="checkbox"> I have reviewed the document and agree to sign it electronically.</label>
-        <p><button type="button" disabled title="Secure submission is not configured yet">Submit signed document (coming next)</button></p>
-        <div class="notice">Your drawing is not saved or sent from this test page. We will enable submission only after the secure server-side process is ready.</div>
+        <p><button id="submitSignatureButton" type="button">Submit Signed Document</button></p>
+        <div id="submitMessage" class="notice" role="status" aria-live="polite">When you submit, your signature will be added to the NHE form. A copy will be emailed to you and the NHE office.</div>
       </section>
     </div>
   </main>
@@ -82,19 +82,75 @@
   <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   <script>
     let previewUrl = null;
+    let signatureHasInk = false;
+    let submitting = false;
+    let signingLinkValid = false;
     function initializeSignaturePad() {
       const canvas = document.getElementById('customerSignatureCanvas');
       const ctx = canvas.getContext('2d');
       ctx.strokeStyle = '#18334c'; ctx.lineWidth = 3; ctx.lineCap = 'round'; ctx.lineJoin = 'round';
       let drawing = false;
       const point = e => { const r = canvas.getBoundingClientRect(); return {x:(e.clientX-r.left)*canvas.width/r.width,y:(e.clientY-r.top)*canvas.height/r.height}; };
-      canvas.addEventListener('pointerdown', e => { e.preventDefault(); canvas.setPointerCapture(e.pointerId); drawing = true; const p=point(e);ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x+.1,p.y+.1);ctx.stroke(); });
-      canvas.addEventListener('pointermove', e => { if(!drawing)return; e.preventDefault();const p=point(e);ctx.lineTo(p.x,p.y);ctx.stroke(); });
+      canvas.addEventListener('pointerdown', e => { e.preventDefault(); canvas.setPointerCapture(e.pointerId); drawing = true; const p=point(e);ctx.beginPath();ctx.moveTo(p.x,p.y);ctx.lineTo(p.x+.1,p.y+.1);ctx.stroke(); signatureHasInk = true; });
+      canvas.addEventListener('pointermove', e => { if(!drawing)return; e.preventDefault();const p=point(e);ctx.lineTo(p.x,p.y);ctx.stroke(); signatureHasInk = true; });
       canvas.addEventListener('pointerup', () => {drawing=false;});
       canvas.addEventListener('pointercancel', () => {drawing=false;});
-      document.getElementById('clearSignatureButton').addEventListener('click', () => ctx.clearRect(0,0,canvas.width,canvas.height));
+      document.getElementById('clearSignatureButton').addEventListener('click', () => { ctx.clearRect(0,0,canvas.width,canvas.height); signatureHasInk = false; });
     }
     initializeSignaturePad();
+
+    async function submitCustomerSignature() {
+      if (submitting || !signingLinkValid) return;
+      const button = document.getElementById('submitSignatureButton');
+      const message = document.getElementById('submitMessage');
+      const name = document.getElementById('signerName').value.trim();
+      if (!name) { message.textContent = 'Please enter your printed name.'; return; }
+      if (!signatureHasInk) { message.textContent = 'Please draw your signature before submitting.'; return; }
+      if (!document.getElementById('signingConsent').checked) {
+        message.textContent = 'Please review the document and check the electronic signing agreement.';
+        return;
+      }
+      const token = new URLSearchParams(window.location.search).get('token');
+      if (!token || !/^[0-9a-f]{64}$/i.test(token)) {
+        message.textContent = 'The signing link is invalid. Please contact NHE Services.';
+        return;
+      }
+      submitting = true;
+      button.disabled = true;
+      button.textContent = 'Submitting securely…';
+      message.textContent = 'Please wait while your signed document is saved. Do not close this page.';
+      try {
+        const response = await fetch('/api/submit-customer-signature', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          cache: 'no-store',
+          body: JSON.stringify({
+            token,
+            signerName: name,
+            consent: true,
+            signatureData: document.getElementById('customerSignatureCanvas').toDataURL('image/png')
+          })
+        });
+        const result = await response.json().catch(() => ({}));
+        if (!response.ok || !result.ok) throw new Error(result.error || 'The document could not be submitted.');
+        signingLinkValid = false;
+        document.getElementById('status').textContent = 'Your document has been signed and saved.';
+        message.textContent = result.emailSent
+          ? 'Success! Your signed document has been saved and a copy has been emailed to you and NHE Services.'
+          : 'Your signed document was saved, but email delivery needs attention. Please contact NHE Services for your copy.';
+        button.textContent = 'Document Submitted';
+        document.getElementById('signerName').disabled = true;
+        document.getElementById('signingConsent').disabled = true;
+        document.getElementById('clearSignatureButton').disabled = true;
+        document.getElementById('customerSignatureCanvas').style.pointerEvents = 'none';
+      } catch (error) {
+        message.textContent = (error && error.message ? error.message : 'Unable to submit the document.') +
+          ' If you are unsure whether it was received, contact NHE Services before trying again.';
+        button.disabled = false;
+        button.textContent = 'Submit Signed Document';
+      } finally { submitting = false; }
+    }
+    document.getElementById('submitSignatureButton').addEventListener('click', submitCustomerSignature);
 
     async function buildFilledPdf(formType, details) {
       if (!window.PDFLib) throw new Error('PDF viewer library did not load. Please refresh.');
@@ -186,6 +242,7 @@
         previewUrl = URL.createObjectURL(blob);
         document.getElementById('pdfViewer').src = previewUrl;
         document.getElementById('documentArea').hidden = false;
+        signingLinkValid = true;
         status.textContent = 'Your document is ready for review.';
       } catch (error) {
         status.textContent = error.message || 'Unable to connect. Please try again later.';
