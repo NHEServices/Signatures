@@ -366,6 +366,9 @@ module.exports = async function handler(req, res) {
 
   let request = null;
   let uploaded = false;
+  let storedPath = null;
+  let documentId = null;
+  let finalized = false;
 
   try {
     const body =
@@ -531,6 +534,7 @@ module.exports = async function handler(req, res) {
     );
 
     uploaded = true;
+    storedPath = storagePath;
 
     const record = {
       storage_path: storagePath,
@@ -578,6 +582,8 @@ module.exports = async function handler(req, res) {
       );
     }
 
+    documentId = doc.id;
+
     await requireOk(
       await fetch(
         base +
@@ -596,6 +602,8 @@ module.exports = async function handler(req, res) {
       'Could not finalize signing request'
     );
 
+    finalized = true;
+
     const recipients = [
       ...new Set([
         ...OFFICE,
@@ -603,32 +611,56 @@ module.exports = async function handler(req, res) {
       ])
     ];
 
-    const mail = await fetch(
-      'https://api.resend.com/emails',
-      {
-        method: 'POST',
-        headers: {
-          Authorization: 'Bearer ' + resend,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          from:
-            'NHE Signatures <signatures@nheservices.com>',
-          to: recipients,
-          subject:
-            'NHE Services - Your Signed ' +
-            formName,
-          text:
-            `Attached is the completed ${formName} ` +
-            `for ${request.customer_name}.\n\n` +
-            'NHE Services',
-          attachments: [{
-            filename,
-            content: pdf.toString('base64')
-          }]
-        })
-      }
-    );
+    let mail;
+    try {
+      mail = await fetch(
+        'https://api.resend.com/emails',
+        {
+          method: 'POST',
+          headers: {
+            Authorization: 'Bearer ' + resend,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            from:
+              'NHE Signatures <signatures@nheservices.com>',
+            to: recipients,
+            subject:
+              'NHE Services - Your Signed ' +
+              formName,
+            text:
+              `Attached is the completed ${formName} ` +
+              `for ${request.customer_name}.\n\n` +
+              'NHE Services',
+            attachments: [{
+              filename,
+              content: pdf.toString('base64')
+            }]
+          })
+        }
+      );
+
+    } catch (mailError) {
+      await fetch(
+        base + '/rest/v1/signed_documents?id=eq.' + doc.id,
+        {
+          method: 'PATCH',
+          headers,
+          body: JSON.stringify({
+            email_status: 'failed',
+            email_error: 'Email service could not be reached'
+          })
+        }
+      ).catch(() => {});
+
+      return res.status(200).json({
+        ok: true,
+        documentId: doc.id,
+        emailSent: false,
+        message:
+          'Document signed and saved, but email delivery needs office attention.'
+      });
+    }
 
     const mailBody = await mail
       .json()
@@ -673,20 +705,49 @@ module.exports = async function handler(req, res) {
     });
 
   } catch (error) {
-    if (request && !uploaded) {
-      await fetch(
-        base +
-        '/rest/v1/signature_requests?id=eq.' +
-        request.id +
-        '&status=eq.processing',
-        {
-          method: 'PATCH',
-          headers,
-          body: JSON.stringify({
-            status: 'pending'
-          })
+    // Only make the link reusable if all partial saved records have been
+    // removed. Otherwise preserve the processing state for office review.
+    if (request && !finalized) {
+      let safeToRetry = true;
+
+      if (documentId) {
+        // Preserve indexed documents for office review.
+        safeToRetry = false;
+      }
+
+      if (!documentId && uploaded && storedPath) {
+        try {
+          const deleted = await fetch(
+            base +
+            '/storage/v1/object/signed-documents/' +
+            objectPath(storedPath),
+            {
+              method: 'DELETE',
+              headers
+            }
+          );
+
+          if (!deleted.ok) safeToRetry = false;
+        } catch {
+          safeToRetry = false;
         }
-      ).catch(() => {});
+      }
+
+      if (safeToRetry) {
+        await fetch(
+          base +
+          '/rest/v1/signature_requests?id=eq.' +
+          encodeURIComponent(request.id) +
+          '&status=eq.processing',
+          {
+            method: 'PATCH',
+            headers,
+            body: JSON.stringify({
+              status: 'pending'
+            })
+          }
+        ).catch(() => {});
+      }
     }
 
     return res.status(500).json({
