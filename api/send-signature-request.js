@@ -3,6 +3,7 @@ const crypto = require('node:crypto');
 
 module.exports = async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
+
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' });
   }
@@ -23,6 +24,7 @@ module.exports = async function handler(req, res) {
     const userResponse = await fetch(url + '/auth/v1/user', {
       headers: { apikey: key, Authorization: 'Bearer ' + token }
     });
+
     if (!userResponse.ok) return res.status(401).json({ error: 'Invalid employee session' });
     const user = await userResponse.json();
 
@@ -36,8 +38,10 @@ module.exports = async function handler(req, res) {
       url + '/rest/v1/profiles?id=eq.' + encodeURIComponent(user.id) + '&select=role',
       { headers }
     );
+
     if (!profileResponse.ok) throw new Error('Employee profile lookup failed');
     const profiles = await profileResponse.json();
+
     if (!['admin', 'office', 'technician'].includes(profiles?.[0]?.role)) {
       return res.status(403).json({ error: 'Employee not authorized' });
     }
@@ -50,6 +54,7 @@ module.exports = async function handler(req, res) {
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) {
       return res.status(400).json({ error: 'Valid customer email required' });
     }
+
     if (!name || name.length > 150 || !['auth', 'completion'].includes(formType)) {
       return res.status(400).json({ error: 'Invalid customer or form' });
     }
@@ -90,17 +95,15 @@ module.exports = async function handler(req, res) {
       headers: { ...headers, Prefer: 'return=representation' },
       body: JSON.stringify(record)
     });
+
     const saved = await save.json().catch(() => null);
     if (!save.ok || !saved?.[0]?.id) {
       return res.status(500).json({ error: 'Could not save signature request' });
     }
 
-    const host = req.headers.host;
-    if (!host || !/^[a-zA-Z0-9.-]+(?::\d+)?$/.test(host)) {
-      return res.status(500).json({ error: 'Invalid application host' });
-    }
+    // Use the approved production domain for every customer signing link.
+    const link = 'https://nhesignatures.vercel.app/sign.html?token=' + rawToken;
 
-    const link = 'https://' + host + '/sign.html?token=' + rawToken;
     const formName = formType === 'auth'
       ? 'Work Authorization and Assignment of Claim'
       : 'Job Completion Form';
@@ -140,6 +143,7 @@ NHE Services`
           body: JSON.stringify({ status: 'email_failed' })
         }
       );
+
       return res.status(502).json({ error: 'Customer email was not accepted' });
     }
 
