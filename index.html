@@ -1,6 +1,6 @@
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>NHE Services | Forms & Signatures</title><style>
 :root{font-family:Inter,system-ui,-apple-system,Segoe UI,sans-serif;color:#193047;background:#f3f6fa}*{box-sizing:border-box}body{margin:0}header{background:#142d43;color:white;padding:19px max(20px,calc((100vw - 1060px)/2));display:flex;justify-content:space-between;align-items:center;gap:12px}.brand{font-size:22px;font-weight:800}.sub{font-size:12px;opacity:.75}main{max-width:1060px;margin:28px auto;padding:0 18px}.card{background:white;border:1px solid #dfe7ee;border-radius:14px;padding:22px;margin-bottom:18px;box-shadow:0 3px 12px #152d4308}h1{font-size:26px;margin:0 0 6px}h2{font-size:19px;margin:0 0 14px}p{line-height:1.5}.muted{color:#647588}.actions{display:flex;flex-wrap:wrap;gap:9px}.btn{border:0;border-radius:9px;background:#175b86;color:white;padding:12px 16px;font:inherit;font-weight:650;cursor:pointer}.btn.alt{background:#e8eff5;color:#173b57}.btn.warn{background:#a23a36}.btn:disabled{opacity:.5;cursor:not-allowed}.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}label{display:block;font-size:13px;font-weight:700;margin-bottom:6px}input,select{width:100%;padding:11px;border:1px solid #cbd7e1;border-radius:8px;font:inherit;background:white}input:focus,select:focus{outline:2px solid #77b7d8}.field{margin-bottom:14px}.hidden{display:none!important}.tag{display:inline-block;background:#e7f3ed;color:#1a6648;border-radius:50px;padding:5px 10px;font-size:12px}.document{background:#fff;border:1px solid #d8e0e7;padding:26px;line-height:1.6;color:#182b3c}.document h2{text-align:center;margin:0 0 20px}.document p{font-size:14px}.signature{width:100%;height:125px;border:2px dashed #b6c8d5;border-radius:8px;touch-action:none;background:#fff;display:block}.sigbox{margin:17px 0;padding:12px;border:1px solid #e0e8ee;border-radius:9px}.sigbox label{margin-bottom:9px}.document .sigbox{break-inside:avoid;page-break-inside:avoid}.document .sigbox img{break-inside:avoid;page-break-inside:avoid}.listrow{padding:14px 0;border-top:1px solid #e8edf2;display:flex;justify-content:space-between;align-items:center;gap:12px}.notice{padding:12px;background:#fff4dd;border-left:4px solid #d29a27;border-radius:6px;font-size:13px}.success{padding:12px;background:#e7f6ec;border-left:4px solid #28965d;border-radius:6px}.pill{font-size:12px;color:#53687c}.toolbar{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px}.small{font-size:12px}.readonly{background:#f6f8fa}.printonly{display:none}.footer{font-size:12px;color:#6b7c8a;padding-bottom:25px}@media(max-width:640px){.grid{grid-template-columns:1fr}.card{padding:16px}.document{padding:14px}header{padding:16px}}@media print{body{background:white}header,.noprint,.toolbar,.sigbox button,.footer{display:none!important}main{margin:0;max-width:none;padding:0}.card{box-shadow:none;border:0;padding:0}.document{border:0;padding:0}.printonly{display:block}.signature{border:0;height:90px}.sigbox{border:0;padding:5px 0}.document p{font-size:12px}h1{display:none}}
-</style></head><body><header><div><div class="brand">NHE Services</div><div class="sub">Forms & Signatures · Cloud draft test</div></div><span class="tag">Test version</span></header><main><section id="login" class="card"><h1>Employee Sign In</h1><p class="muted">Sign in using your NHE Signatures account.</p><div class="field"><label for="loginEmail">Email</label><input id="loginEmail" type="email" autocomplete="username"></div><div class="field"><label for="loginPassword">Password</label><input id="loginPassword" type="password" autocomplete="current-password"></div><div class="actions"><button class="btn" id="loginButton" onclick="signIn()">Sign In</button></div><p id="loginMessage" class="muted" role="status"></p></section><div id="sessionBar" class="card hidden noprint"><span id="signedInAs"></span> <button class="btn alt" style="float:right" onclick="signOut()">Sign Out</button></div><div id="appShell" class="hidden">
+</style></head><body><header><div><div class="brand">NHE Services</div><div class="sub">Forms & Signatures · Cloud draft test</div></div><span class="tag">Test version</span></header><main><section id="login" class="card"><h1>Employee Sign In</h1><p class="muted">Sign in using your NHE Signatures account.</p><div class="field"><label for="loginEmail">Email</label><input id="loginEmail" type="email" autocomplete="username"></div><div class="field"><label for="loginPassword">Password</label><input id="loginPassword" type="password" autocomplete="current-password"></div><div class="actions"><button class="btn" id="loginButton" onclick="signIn()">Sign In</button><button class="btn alt" type="button" onclick="showPasswordHelp()">Forgot / Set Password</button></div><p id="loginMessage" class="muted" role="status"></p></section><section id="passwordHelp" class="card hidden"><h1>Set Your Password</h1><p class="muted">Enter your NHE employee email and we will send a secure password setup link.</p><div class="field"><label for="recoveryEmail">Employee email</label><input id="recoveryEmail" type="email" autocomplete="email"></div><div class="actions"><button class="btn" id="recoverySendButton" onclick="sendPasswordSetupEmail()">Email Password Link</button><button class="btn alt" onclick="showLoginScreen()">Back to Sign In</button></div><p id="recoveryMessage" class="muted" role="status"></p></section><section id="passwordSetup" class="card hidden"><h1>Create Your Password</h1><p class="muted">Choose a new password for your NHE Signatures account.</p><div class="field"><label for="newPassword">New password (at least 12 characters)</label><input id="newPassword" type="password" autocomplete="new-password" minlength="12"></div><div class="field"><label for="confirmPassword">Confirm new password</label><input id="confirmPassword" type="password" autocomplete="new-password" minlength="12"></div><div class="actions"><button class="btn" id="saveNewPasswordButton" onclick="saveNewPassword()">Save Password</button></div><p id="passwordSetupMessage" class="muted" role="status"></p></section><div id="sessionBar" class="card hidden noprint"><span id="signedInAs"></span> <button class="btn alt" style="float:right" onclick="signOut()">Sign Out</button></div><div id="appShell" class="hidden">
 <section id="home"><div class="card"><h1>Customer Documents</h1><p class="muted">Create a job, prepare your NHE form, and let the customer review and sign.</p><div class="actions"><button class="btn" onclick="newJob()">+ Create New Job</button><button class="btn alt" onclick="show('jobs')">View Saved Jobs</button><button class="btn alt hidden" id="authorizedSignatureNav" onclick="openAuthorizedSignature()">Manage Authorized Signature</button></div></div><div class="card"><h2>Included Forms</h2><p>✓ Work Authorization and Assignment of Claim</p><p>✓ Job Completion Form</p><div class="notice">Test version: signed PDFs can be automatically saved to private cloud storage after database setup. Use fictional customer information and test signatures only.</div></div></section>
 <section id="authorizedSignature" class="hidden"><div class="card noprint"><h1>Authorized NHE Signature</h1><p class="muted">Administrator setup only. This signature is not yet applied to outgoing documents.</p><p id="authorizedSignatureStatus" class="notice" role="status">Checking signature status…</p><div class="field"><label for="authorizedRepresentativeName">Authorized representative's printed name</label><input id="authorizedRepresentativeName" maxlength="150" autocomplete="name" placeholder="Your full name"></div><div class="field"><label>Draw your signature</label><canvas class="signature" id="authorizedSignatureCanvas" width="760" height="180" aria-label="Draw your signature here"></canvas></div><div class="toolbar"><button class="btn alt" onclick="clearAuthorizedSignature()">Clear Drawing</button></div><div class="field" style="margin-top:16px"><label style="font-weight:normal"><input type="checkbox" id="authorizedSignatureConsent" style="width:auto;margin-right:8px">I am the person named above. I authorize NHE Services to securely retain this signature for future use on NHE documents that I approve. I understand that saving it now does not apply it to any document.</label></div><div class="toolbar"><button class="btn" id="saveAuthorizedSignatureButton" onclick="saveAuthorizedSignature()">Save Authorized Signature</button><button class="btn warn" id="disableAuthorizedSignatureButton" onclick="disableAuthorizedSignature()" disabled>Disable Stored Signature</button><button class="btn alt" onclick="show('home')">Back</button></div></div></section>
 <section id="editor" class="hidden"><div class="card noprint"><h1 id="editorTitle">New Job</h1><p class="muted">A technician can fill in the details before presenting the document to the customer.</p><div class="grid"><div class="field"><label>Customer / property owner name</label><input id="customer" autocomplete="name"></div><div class="field"><label>Job number (optional)</label><input id="jobNo"></div><div class="field"><label>Property address</label><input id="address" autocomplete="street-address"></div><div class="field"><label>City, state, ZIP</label><input id="city"></div><div class="field"><label>Insurance company</label><input id="insurer"></div><div class="field"><label>Claim number</label><input id="claim"></div><div class="field"><label>Date of loss</label><input id="loss" type="date"></div><div class="field"><label>Technician / NHE representative name</label><input id="tech"></div><div class="field"><label>Document to prepare</label><select id="formType"><option value="auth">Work Authorization and Assignment of Claim</option><option value="completion">Job Completion Form</option></select></div></div><div class="toolbar"><button class="btn" onclick="prepare()">Review Document →</button><button class="btn alt" onclick="openRemoteOptions()">Send for Signature</button><button class="btn alt" onclick="saveDraft()">Save Job Draft to Cloud</button><button class="btn alt" onclick="show('home')">Cancel</button></div></div></section>
@@ -327,8 +327,69 @@ function openCloudJob(id,jobs){
   $('editorTitle').textContent='Edit Cloud Job Draft';show('editor');
 }
 
-// Authentication gates the prototype UI. Signed documents remain local to this browser.
+// Employee authentication and password recovery.
 let sb=null;
+let passwordRecoveryActive=false;
+function showLoginScreen(){
+  passwordRecoveryActive=false;
+  $('passwordHelp').classList.add('hidden');
+  $('passwordSetup').classList.add('hidden');
+  $('login').classList.remove('hidden');
+}
+function showPasswordHelp(){
+  $('recoveryEmail').value=$('loginEmail').value.trim();
+  $('recoveryMessage').textContent='';
+  $('login').classList.add('hidden');
+  $('passwordHelp').classList.remove('hidden');
+}
+function showPasswordSetup(){
+  passwordRecoveryActive=true;
+  $('login').classList.add('hidden');
+  $('passwordHelp').classList.add('hidden');
+  $('appShell').classList.add('hidden');
+  $('sessionBar').classList.add('hidden');
+  $('newPassword').value='';
+  $('confirmPassword').value='';
+  $('passwordSetupMessage').textContent='';
+  $('passwordSetup').classList.remove('hidden');
+}
+async function sendPasswordSetupEmail(){
+  const email=$('recoveryEmail').value.trim();
+  const message=$('recoveryMessage');
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)){message.textContent='Enter a valid email address.';return;}
+  if(!sb){message.textContent='Connection is not ready. Please refresh and try again.';return;}
+  const button=$('recoverySendButton');button.disabled=true;
+  message.textContent='Sending password setup link…';
+  try{
+    const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:window.location.origin+'/'});
+    if(error)throw error;
+    message.textContent='If this email has an NHE Signatures account, a password setup link has been sent. Check your inbox and spam folder.';
+  }catch(e){message.textContent='Unable to send password link: '+e.message;}
+  finally{button.disabled=false;}
+}
+async function saveNewPassword(){
+  const message=$('passwordSetupMessage');
+  const password=$('newPassword').value;
+  if(password.length<12){message.textContent='Use at least 12 characters.';return;}
+  if(password!==$('confirmPassword').value){message.textContent='Passwords do not match.';return;}
+  if(!sb){message.textContent='Connection is not ready.';return;}
+  const button=$('saveNewPasswordButton');button.disabled=true;
+  message.textContent='Saving your password…';
+  try{
+    const {data:{session}}=await sb.auth.getSession();
+    if(!session)throw new Error('Your password link has expired. Request a new one.');
+    const {error}=await sb.auth.updateUser({password});
+    if(error)throw error;
+    passwordRecoveryActive=false;
+    await sb.auth.signOut();
+    showLoginScreen();
+    $('loginPassword').value='';
+    $('loginMessage').textContent='Password saved. Please sign in with your new password.';
+    window.history.replaceState({},document.title,window.location.pathname);
+  }catch(e){message.textContent='Password was not saved: '+e.message;}
+  finally{button.disabled=false;}
+}
+
 async function initializeAuth(){
   const msg=$('loginMessage');
   try {
@@ -340,11 +401,26 @@ async function initializeAuth(){
     sb=window.supabase.createClient(config.supabaseUrl,config.supabasePublishableKey);
     const {data:{session},error}=await sb.auth.getSession();
     if(error) throw error;
-    await setSession(session);
-    sb.auth.onAuthStateChange((_event,session)=>{void setSession(session)});
+     // Recovery links may be processed asynchronously by Supabase after page load.
+     // Listen for PASSWORD_RECOVERY rather than treating the link as a normal login.
+    sb.auth.onAuthStateChange((event,nextSession)=>{
+       if(event==='PASSWORD_RECOVERY'){
+         showPasswordSetup();
+         return;
+       }
+       if(passwordRecoveryActive)return;
+       void setSession(nextSession);
+     });
+     if(window.location.hash.includes('type=recovery') || new URLSearchParams(window.location.search).get('type')==='recovery'){
+       if(session)showPasswordSetup();
+       else await setSession(session);
+     }else{
+       await setSession(session);
+     }
   }catch(e){msg.textContent='Setup issue: '+e.message;}
 }
 async function setSession(session){
+   if(passwordRecoveryActive)return;
   if(!session){$('authorizedSignatureNav').classList.add('hidden');employeeRole=null;cloudJobId=null;$('login').classList.remove('hidden');$('appShell').classList.add('hidden');$('sessionBar').classList.add('hidden');return;}
   // Require a matching employee profile before displaying the app.
   const {data:profile,error}=await sb.from('profiles').select('role,full_name').eq('id',session.user.id).single();
