@@ -67,8 +67,8 @@
       <section class="signing-panel" aria-labelledby="signingTitle">
         <h2 id="signingTitle">Customer signature</h2>
         <p>Review the document above, then sign below to submit your completed form.</p>
-        <label for="signerName">Your printed name</label>
-        <input id="signerName" type="text" maxlength="150" autocomplete="name">
+        <label for="signerName">Your full printed name (required)</label>
+        <input id="signerName" name="name" type="text" maxlength="150" autocomplete="name" placeholder="Enter your full name" required aria-required="true">
         <label for="customerSignatureCanvas">Draw your signature</label>
         <canvas id="customerSignatureCanvas" class="signature-pad" width="760" height="180" aria-label="Draw your signature"></canvas>
         <p><button id="clearSignatureButton" type="button">Clear signature</button></p>
@@ -104,7 +104,7 @@
       const button = document.getElementById('submitSignatureButton');
       const message = document.getElementById('submitMessage');
       const name = document.getElementById('signerName').value.trim();
-      if (!name) { message.textContent = 'Please enter your printed name.'; return; }
+      if (!name) { message.textContent = 'Please enter your full printed name.'; document.getElementById('signerName').focus(); return; }
       if (!signatureHasInk) { message.textContent = 'Please draw your signature before submitting.'; return; }
       if (!document.getElementById('signingConsent').checked) {
         message.textContent = 'Please review the document and check the electronic signing agreement.';
@@ -234,7 +234,7 @@
         }
         const data = result.documentData || {};
         document.getElementById('customerName').textContent = result.customerName || 'Customer';
-        document.getElementById('signerName').value = result.customerName || '';
+        document.getElementById('signerName').value = '';
         document.getElementById('formName').textContent = result.formType === 'auth'
           ? 'Work Authorization and Assignment of Claim' : 'Job Completion Form';
         status.textContent = 'Preparing your document with the job information…';
