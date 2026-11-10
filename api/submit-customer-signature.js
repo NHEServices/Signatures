@@ -188,34 +188,41 @@ async function buildPdf(
       39, 439, 410
     );
 
+    // Customer's signature
     drawSignature(
       page, customer,
       245, 625, 160, 19
     );
 
+    // Customer's printed name
     drawText(
       page, font, signerName,
       39, 625, 195, 9
     );
 
+    // Customer's date
     drawText(
       page, font, date,
       435, 625, 120, 9
     );
 
+    // NHE representative's signature
+    // Corrected to the second signing line
     drawSignature(
       page, representative,
-      245, 706, 160, 19
+      245, 665, 160, 19
     );
 
+    // NHE representative's printed name
     drawText(
       page, font, repName,
-      39, 706, 195, 9
+      39, 665, 195, 9
     );
 
+    // NHE representative's date
     drawText(
       page, font, date,
-      435, 706, 120, 9
+      435, 665, 120, 9
     );
 
   } else {
@@ -284,16 +291,17 @@ async function buildPdf(
       135, 314, 370
     );
 
-    // Customer's printed name - moved down 6 points
+    // Customer's printed name
     drawText(
       page, font, signerName,
       165, 611, 280, 10
     );
 
-    // Customer's signing date - moved down 6 points
+    // Customer's date
+    // Moved right to avoid overlapping "Date:"
     drawText(
       page, font, date,
-      465, 611, 100, 10
+      487, 611, 50, 9
     );
 
     // Customer's handwritten signature
@@ -302,13 +310,13 @@ async function buildPdf(
       153, 646, 300, 19
     );
 
-    // NHE authorized representative signature
+    // NHE representative's signature
     drawSignature(
       page, representative,
       113, 695, 328, 19
     );
 
-    // NHE representative date - moved down 6 points
+    // NHE representative's date
     drawText(
       page, font, date,
       465, 688, 100, 10
